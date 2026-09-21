@@ -6,7 +6,7 @@
 # (huggingface_hub is deliberately NOT here: app.py loads the model from a
 # local file committed to this repo, not from the Hub -- see app.py.)
 streamlit==1.38.0
-pandas==3.0.2
+pandas==2.2.2
 numpy==2.4.4
 scikit-learn==1.8.0
 xgboost==3.2.0
