@@ -1,0 +1,100 @@
+name: Tourism Project Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Automatically triggers on push to the main branch
+
+# model-training commits the trained model file back into this repo, which
+# requires write access to repo contents (the default GITHUB_TOKEN is
+# read-only unless this is granted).
+permissions:
+  contents: write
+
+jobs:
+
+  register-dataset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      - name: Upload Dataset to Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python tourism_project/model_building/register_dataset.py
+
+  data-prep:
+    needs: register-dataset
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      - name: Run Data Preparation
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python tourism_project/model_building/data_prep.py
+
+  model-training:
+    needs: data-prep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      - name: Start MLflow Server
+        run: |
+          nohup mlflow ui --host 0.0.0.0 --port 5000 &  # Run MLflow UI in the background
+          sleep 5  # Wait for a moment to let the server starts
+      - name: Model Building
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python tourism_project/model_building/train.py
+      # The presentation template for this project calls for the best
+      # model to be committed back into the GitHub repo (not registered on
+      # a separate Hugging Face Model Hub repo), so that app.py -- deployed
+      # via Streamlit Community Cloud straight from this repo -- can load
+      # it with a plain relative path. [skip ci] in the commit message
+      # stops this push from re-triggering the whole workflow in a loop.
+      - name: Commit trained model to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tourism_project/deployment/best_model.joblib
+          git diff --staged --quiet && echo "No model changes to commit" || git commit -m "Update trained model [skip ci]"
+          git push origin HEAD:main
+
+  deploy-hosting:
+    runs-on: ubuntu-latest
+    needs: [model-training, data-prep, register-dataset]
+    steps:
+      # ref: main (not the default triggering SHA) so this checkout picks
+      # up the model file model-training just committed and pushed above.
+      - uses: actions/checkout@v3
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Dependencies
+        run: pip install -r tourism_project/requirements.txt
+      # Hosting Docker/Streamlit Spaces on Hugging Face's free cpu-basic
+      # tier requires an HF PRO subscription (create_repo returns HTTP 402
+      # otherwise) -- a platform policy, not a bug here. This repo is
+      # deployed via Streamlit Community Cloud instead, which watches this
+      # GitHub repo directly and auto-redeploys on every push to main --
+      # there is no "push files" API step to run for it in CI. This job
+      # instead acts as a deployment gate: it proves the exact model file
+      # just committed to the repo actually loads and predicts correctly.
+      - name: Smoke-test the deployment artifact
+        run: python tourism_project/deployment/smoke_test.py

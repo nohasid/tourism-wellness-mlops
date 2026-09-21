@@ -1,0 +1,13 @@
+# The scikit-learn/xgboost/pandas/numpy/joblib versions here MUST match
+# tourism_project/requirements.txt (the training environment) EXACTLY. If
+# these two files drift apart, a model trained/pickled with one
+# scikit-learn/xgboost version can fail -- or silently misbehave -- when
+# unpickled with a different version in this container. Keep them in sync.
+# (huggingface_hub is deliberately NOT here: app.py loads the model from a
+# local file committed to this repo, not from the Hub -- see app.py.)
+streamlit==1.38.0
+pandas==3.0.2
+numpy==2.4.4
+scikit-learn==1.8.0
+xgboost==3.4.1
+joblib==1.5.3
