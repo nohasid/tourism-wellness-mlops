@@ -3,7 +3,7 @@
 # pandas/numpy/joblib versions here MUST match tourism_project/deployment/
 # requirements.txt exactly, since train.py pickles a model in this
 # environment that app.py later unpickles in the deployment container.
-pandas==3.0.2
+pandas==2.2.2
 numpy==2.4.4
 scikit-learn==1.8.0
 xgboost==3.2.0
