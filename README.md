@@ -1,29 +1,3 @@
-# Tourism Wellness Package -- MLOps Pipeline
-
-Predicts whether a customer will purchase "Visit with Us"'s new Wellness
-Tourism Package, with an automated GitHub Actions pipeline covering data
-registration, data prep, model training (with MLflow experiment tracking),
-and deployment.
-
-## Repo layout
-
-tourism_project/
-  config.py                        # edit HF_USERNAME / GITHUB_USERNAME / GITHUB_REPO_NAME here
-  requirements.txt                 # pipeline dependencies (used by every CI job)
-  data/                             # tourism.csv lives here locally
-  model_building/
-    register_dataset.py            # uploads raw data to HF dataset repo
-    data_prep.py                   # loads from HF, cleans, splits, re-uploads train/test
-    train.py                       # tunes XGBoost, logs to MLflow, saves best model into deployment/
-  deployment/
-    Dockerfile                     # not currently used for hosting (see below) -- kept for reference
-    app.py                         # Streamlit app; loads the model from the local repo file below
-    best_model.joblib              # committed here by the pipeline's model-training job (not in git until first run)
-    requirements.txt               # pinned to match tourism_project/requirements.txt exactly
-    hosting.py                     # OPTIONAL, requires HF PRO -- see note below
-    smoke_test.py                  # CI deployment gate actually used by pipeline.yml
-.github/workflows/pipeline.yml     # the CI/CD pipeline, triggers on push to main
-
 ## Where the model lives
 
 The trained model is **not** registered on the Hugging Face Model Hub.
