@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+mlflow.db
+mlruns/
+.DS_Store
