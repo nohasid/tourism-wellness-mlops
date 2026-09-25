@@ -1,44 +1,28 @@
 """
 Deployment Smoke Test
 ----------------------
-Validates the exact thing app.py does at runtime: load
-tourism_project/deployment/best_model.joblib -- the file the pipeline's
-model-training job committed into this GitHub repo -- and run one real
+Validates the exact thing app.py does at runtime: download
+best_model.joblib from the Hugging Face Model Hub and run one real
 prediction through it. This is what the CI pipeline's deploy-hosting job
 runs as its deployment gate (see .github/workflows/pipeline.yml), catching
 a missing or broken model artifact before Streamlit Community Cloud picks
 up the same commit.
 
-No network access to Hugging Face or anywhere else is needed for this --
-the model lives in the repo itself, matching the "commit the best model
-back into the GitHub repository" / "load the model committed to the GitHub
-repo" architecture from the project's presentation template.
-
 Run from the repository root:
     python tourism_project/deployment/smoke_test.py
 """
 
-import os
-
 import joblib
 import pandas as pd
+from huggingface_hub import hf_hub_download
 
-MODEL_ARTIFACT_FILENAME = "best_model.joblib"
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MODEL_ARTIFACT_FILENAME)
+MODEL_REPO_ID = "Nohafx/tourism-wellness-model"
 
 
 def main():
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"Could not find {MODEL_PATH}. Make sure "
-            "tourism_project/model_building/train.py has run and its "
-            "output has been committed to this repo (the model-training "
-            "job's 'Commit trained model to repository' step does this "
-            "automatically in CI)."
-        )
-
-    print(f"Loading model from {MODEL_PATH}")
-    model = joblib.load(MODEL_PATH)
+    print(f"Downloading model from https://huggingface.co/{MODEL_REPO_ID}")
+    model_path = hf_hub_download(repo_id=MODEL_REPO_ID, filename="best_model.joblib")
+    model = joblib.load(model_path)
     print("Model loaded successfully.")
 
     # A realistic, fully-populated row in the exact schema app.py builds
@@ -72,8 +56,9 @@ def main():
     assert 0.0 <= probability <= 1.0, f"Unexpected probability: {probability}"
 
     print(f"Sample prediction: {prediction} (probability of purchase: {probability:.4f})")
-    print("Deployment smoke test passed: the committed model loads and "
-          "predicts correctly with the exact input schema app.py uses.")
+    print("Deployment smoke test passed: the model downloaded from the "
+          "Hugging Face Model Hub loads and predicts correctly with the "
+          "exact input schema app.py uses.")
 
 
 if __name__ == "__main__":

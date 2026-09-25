@@ -2,34 +2,23 @@
 Streamlit app for the "Visit with Us" Wellness Tourism Package predictor.
 
 Deployed on Streamlit Community Cloud, which clones this GitHub repo
-directly and runs this file. The trained model
-(tourism_project/deployment/best_model.joblib) is committed into the repo
-by the CI pipeline's model-training job -- see
-.github/workflows/pipeline.yml -- and loaded here via a path relative to
-this file's own location, so it works regardless of the process's current
-working directory.
+directly and runs this file. The trained model is registered on the
+Hugging Face Model Hub (see tourism_project/model_building/train.py) and
+downloaded here via hf_hub_download at app startup.
 """
-
-from pathlib import Path
 
 import joblib
 import pandas as pd
 import streamlit as st
+from huggingface_hub import hf_hub_download
 
-MODEL_ARTIFACT_FILENAME = "best_model.joblib"
-MODEL_PATH = Path(__file__).parent / MODEL_ARTIFACT_FILENAME
+MODEL_REPO_ID = "Nohafx/tourism-wellness-model"
 
 
 @st.cache_resource
 def load_model():
-    if not MODEL_PATH.exists():
-        st.error(
-            f"Model file not found at {MODEL_PATH}. Make sure "
-            "tourism_project/model_building/train.py has been run and its "
-            "output committed to this repo before deploying."
-        )
-        st.stop()
-    return joblib.load(MODEL_PATH)
+    model_path = hf_hub_download(repo_id=MODEL_REPO_ID, filename="best_model.joblib")
+    return joblib.load(model_path)
 
 
 st.set_page_config(page_title="Wellness Package Predictor", page_icon="🧘")

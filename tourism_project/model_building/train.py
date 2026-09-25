@@ -3,28 +3,10 @@ Model Building with Experimentation Tracking
 ----------------------------------------------
 1. Loads train.csv / test.csv from the Hugging Face dataset repo.
 2. Builds a preprocessing + XGBoost pipeline.
-   Why XGBoost (out of the algorithms the rubric allows -- Decision Tree,
-   Bagging, Random Forest, AdaBoost, Gradient Boosting, XGBoost):
-     - it is the strongest default for tabular data with mixed
-       numeric/categorical features once one-hot encoded,
-     - it natively supports class-imbalance correction via
-       `scale_pos_weight`, which this dataset needs (~19% positive class),
-     - it is fast enough to hyperparameter-search in a CI runner.
-3. Tunes hyperparameters with RandomizedSearchCV, scoring on F1 for the
-   positive class -- NOT accuracy. With an 81/19 class split, a model that
-   always predicts "No" scores 81% accuracy while being useless for the
-   actual business goal (finding likely buyers), so accuracy is the wrong
-   thing to optimize here.
+3. Tunes hyperparameters with RandomizedSearchCV, scoring on F1.
 4. Logs every trial's parameters/metrics to MLflow, evaluates the best
-   model on the held-out test set, and saves it to
-   tourism_project/deployment/best_model.joblib -- sitting right next to
-   app.py so it gets committed into the GitHub repo by the CI pipeline
-   (see .github/workflows/pipeline.yml's "Commit trained model to
-   repository" step) and Streamlit Community Cloud can load it directly
-   from the repo, with no Hugging Face Model Hub involved in serving.
-
-Run from the repository root:
-    python tourism_project/model_building/train.py
+   model on the held-out test set, saves it locally, and registers it on
+   the Hugging Face Model Hub.
 """
 
 import os
@@ -106,7 +88,6 @@ def main():
     X_test = test_df.drop(columns=[config.TARGET_COLUMN])
     y_test = test_df[config.TARGET_COLUMN]
 
-    # class imbalance ratio, fed to XGBoost's scale_pos_weight search space
     neg, pos = y_train.value_counts()[0], y_train.value_counts()[1]
     imbalance_ratio = neg / pos
     print(f"Train class balance -> negative: {neg}, positive: {pos}, "
@@ -134,9 +115,6 @@ def main():
         verbose=1,
     )
 
-    # Modern MLflow deprecated the plain "./mlruns" filesystem store; use a
-    # local SQLite backend instead. This needs no running `mlflow server` --
-    # tracking data is written straight to mlflow.db in the repo root.
     tracking_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     mlflow.set_tracking_uri(f"sqlite:///{tracking_dir}/mlflow.db")
     mlflow.set_experiment("tourism-wellness-package")
@@ -150,11 +128,9 @@ def main():
         print(f"Best params: {best_params}")
         print(f"Best CV F1 score: {search.best_score_:.4f}")
 
-        # Log every tuned hyperparameter
         mlflow.log_params(best_params)
         mlflow.log_metric("cv_best_f1", search.best_score_)
 
-        # Evaluate on the held-out test set
         y_pred = best_pipeline.predict(X_test)
         y_proba = best_pipeline.predict_proba(X_test)[:, 1]
 
@@ -171,9 +147,6 @@ def main():
             print(f"  {k}: {v:.4f}")
         print(classification_report(y_test, y_pred, target_names=["No", "Yes"]))
 
-        # serialization_format="cloudpickle": MLflow's default "skops"
-        # serializer refuses to serialize XGBoost's Booster/XGBClassifier
-        # types ("untrusted types"). cloudpickle handles them without issue.
         mlflow.sklearn.log_model(
             best_pipeline, "model", serialization_format="cloudpickle"
         )
@@ -181,13 +154,6 @@ def main():
         run_id = mlflow.active_run().info.run_id
         print(f"MLflow run id: {run_id}")
 
-    # Save the best pipeline directly into tourism_project/deployment/,
-    # right next to app.py. This is deliberately NOT a separate
-    # "artifacts" folder: the CI pipeline commits this exact file back into
-    # the GitHub repo after training, and Streamlit Community Cloud (which
-    # deploys straight from the repo) needs it sitting alongside app.py to
-    # load it with a simple relative path -- no Hugging Face Model Hub
-    # round-trip needed for serving.
     deployment_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "deployment")
     )
@@ -195,12 +161,20 @@ def main():
     model_path = os.path.join(deployment_dir, config.MODEL_ARTIFACT_FILENAME)
     joblib.dump(best_pipeline, model_path)
     print(f"Saved best pipeline: {model_path}")
-    print(
-        "This file will be committed into the GitHub repository by the "
-        "pipeline's model-training job (or by your manual git push cell in "
-        "Colab) -- that commit is what makes it available to both the "
-        "deploy-hosting smoke test and the live Streamlit app."
+
+    from huggingface_hub import HfApi, create_repo
+
+    MODEL_REPO_ID = "Nohafx/tourism-wellness-model"
+    api = HfApi(token=token)
+    create_repo(repo_id=MODEL_REPO_ID, repo_type="model", exist_ok=True, token=token)
+    api.upload_file(
+        path_or_fileobj=model_path,
+        path_in_repo="best_model.joblib",
+        repo_id=MODEL_REPO_ID,
+        repo_type="model",
+        token=token,
     )
+    print(f"Model registered: https://huggingface.co/{MODEL_REPO_ID}")
 
 
 if __name__ == "__main__":

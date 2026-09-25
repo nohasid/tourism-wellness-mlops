@@ -1,8 +1,3 @@
-# Used by every job in .github/workflows/pipeline.yml (register-dataset,
-# data-prep, model-training, deploy-hosting). The scikit-learn/xgboost/
-# pandas/numpy/joblib versions here MUST match tourism_project/deployment/
-# requirements.txt exactly, since train.py pickles a model in this
-# environment that app.py later unpickles in the deployment container.
 pandas==2.2.2
 numpy==2.4.4
 scikit-learn==1.8.0
